@@ -4,69 +4,43 @@ import ctypes
 import stat
 import shutil
 import hashlib
+import random
 
 
-def get_string_md5(text):
+def get_random_bytes(text, num_bytes=32):
     """
-    计算字符串的 MD5 哈希值
-
-    参数:
-        text: 要计算 MD5 的字符串
-
-    返回:
-        32 位十六进制 MD5 哈希值
+    随机获取字符串的若干个字节
     """
-    # 将字符串编码为字节序列（必须步骤）
-    byte_data = text.encode("utf-8")
-
-    # 创建 MD5 对象并更新数据
-    md5_hash = hashlib.md5()
-    md5_hash.update(byte_data)
-
-    # 返回十六进制格式的哈希值
-    return md5_hash.hexdigest()
-
-
-def get_file_md5(file_path, chunk_size=8192, threshold=104857600):  # 默认阈值100MB
-    """
-    计算文件的 MD5 哈希值
-
-    参数:
-        file_path: 文件路径
-        chunk_size: 分块读取的大小(字节)
-        threshold: 使用分块读取的阈值(字节)，默认100MB以上的文件使用分块读取
-
-    返回:
-        文件的 MD5 哈希值(32位十六进制字符串)
-    """
-    # 检查文件是否存在
-    if not os.path.exists(file_path):
-        raise FileNotFoundError(f"文件不存在: {file_path}")
-
-    # 检查是否为文件
-    if not os.path.isfile(file_path):
-        raise ValueError(f"路径不是文件: {file_path}")
-
-    file_size = os.path.getsize(file_path)
-
-    # 根据文件大小选择读取方式
-    if file_size > threshold:
-        # 大文件使用分块读取
-        md5_hash = hashlib.md5()
-        with open(file_path, "rb") as f:
-            while chunk := f.read(chunk_size):
-                md5_hash.update(chunk)
-        return md5_hash.hexdigest()
+    # 判断输入是否为有效文件路径
+    if not os.path.exists(text) or not os.path.isfile(text):
+        # 将字符串编码为字节序列（必须步骤）
+        byte_data = text.encode("utf-8")
+        # 使用random.choices从字节序列中随机选择指定数量的字节
+        byte_list = random.choices(byte_data, k=num_bytes)
+        # 返回字节数组
+        return bytearray(byte_list)
     else:
-        # 小文件一次性读取
-        with open(file_path, "rb") as f:
-            file_data = f.read()
-            return hashlib.md5(file_data).hexdigest()
+        # 准备随机字节列表
+        pos_list = []
+        for _ in range(num_bytes):
+            pos_list.append(random.randint(0, os.path.getsize(text) - 1))
+        pos_list.sort()
+        # 准备字节数组
+        byte_list = bytearray()
+        # 读取文件内容
+        with open(text, "rb") as f:
+            for pos in pos_list:
+                f.seek(pos)
+                byte_list += f.read(1)
+        # 返回字节数组
+        return byte_list
 
 
 def force_delete(path):
-    """强制删除文件或文件夹（支持长路径），将其转化为一些数据"""
-    remaining_data = ""
+    """
+    强制删除文件或文件夹（支持长路径），将其转化为一些数据
+    """
+    remaining_data = bytearray()
 
     # 转换为长路径格式（支持特殊字符和超长路径）
     if not path.startswith("\\\\?\\"):
@@ -80,7 +54,7 @@ def force_delete(path):
     try:
         # 如果是文件
         if os.path.isfile(path):
-            remaining_data += get_file_md5(path)
+            remaining_data += get_random_bytes(path)
             # 移除只读属性
             os.chmod(path, stat.S_IWRITE)
             os.remove(path)
@@ -93,14 +67,14 @@ def force_delete(path):
                 for name in files:
                     file_path = os.path.join(root, name)
                     try:
-                        remaining_data += get_file_md5(file_path)
+                        remaining_data += get_random_bytes(file_path)
                         os.chmod(file_path, stat.S_IWRITE)
                         os.remove(file_path)
                     except Exception:
                         # 如果常规删除失败，尝试强制解除占用
                         try:
                             ctypes.windll.kernel32.SetFileAttributesW(file_path, 0)
-                            remaining_data += get_file_md5(file_path)
+                            remaining_data += get_random_bytes(file_path)
                             os.remove(file_path)
                         except Exception:
                             pass
@@ -108,7 +82,7 @@ def force_delete(path):
                 for name in dirs:
                     dir_path = os.path.join(root, name)
                     try:
-                        remaining_data += get_string_md5(dir_path)
+                        remaining_data += get_random_bytes(dir_path)
                         os.rmdir(dir_path)
                     except Exception:
                         # 如果常规删除失败，尝试强制解除占用
@@ -116,19 +90,19 @@ def force_delete(path):
                             ctypes.windll.kernel32.SetFileAttributesW(
                                 dir_path, 0x80
                             )  # FILE_ATTRIBUTE_NORMAL
-                            remaining_data += get_string_md5(dir_path)
+                            remaining_data += get_random_bytes(dir_path)
                             os.rmdir(dir_path)
                         except Exception:
                             pass
 
             # 删除主文件夹
             try:
-                remaining_data += get_string_md5(path)
+                remaining_data += get_random_bytes(path)
                 os.rmdir(path)
             except Exception:
                 try:
                     ctypes.windll.kernel32.SetFileAttributesW(path, 0x80)
-                    remaining_data += get_string_md5(path)
+                    remaining_data += get_random_bytes(path)
                     os.rmdir(path)
                 except Exception:
                     shutil.rmtree(path, ignore_errors=True)
@@ -150,7 +124,7 @@ if __name__ == "__main__":
     if len(sys.argv) > 1:
         target = sys.argv[1]
         result = force_delete(target)
-        with open("log.txt", "a") as log_file:
+        with open("log.txt", "ab") as log_file:
             if result[0]:
                 log_file.write(result[1])
     else:
