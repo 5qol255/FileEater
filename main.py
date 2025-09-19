@@ -162,13 +162,14 @@ if __name__ == "__main__":
     # 获取拖放的文件/文件夹路径
     if len(sys.argv) > 1:
         file_eater = FileEater()
-        if os.path.isfile(sys.argv[1]):
-            result, data = file_eater.eat_file(sys.argv[1])
-        else:
-            result, data = file_eater.eat_folder(sys.argv[1])
-        if result:
-            with open("log.txt", "ab") as f:
-                f.write(data)
+        for arg in sys.argv[1:]:
+            if os.path.isfile(arg):
+                result, data = file_eater.eat_file(sys.argv[1])
+            else:
+                result, data = file_eater.eat_folder(sys.argv[1])
+            if result:
+                with open("log.txt", "ab") as f:
+                    f.write(data)
     # 如果没有参数，显示使用说明
     else:
         print("请将文件或文件夹拖放到此脚本上", file=sys.stderr)
