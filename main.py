@@ -5,7 +5,6 @@ import ctypes  # For Windows API calls
 import shutil  # For deleting file operations
 import random  # For random byte selection
 import subprocess  # For executing system commands
-from typing import Tuple, Callable, Any  # For type hinting
 
 
 class FileEater:
@@ -39,7 +38,7 @@ class FileEater:
         # 返回字节数组
         return byte_list
 
-    def eat_file(self, path: str) -> Tuple[bool, bytearray | None]:
+    def eat_file(self, path: str) -> bytearray:
         """
         删除文件（支持长路径），将其转化为一些数据
         """
@@ -82,20 +81,15 @@ class FileEater:
                     )
             except Exception as err:
                 print(f"{os.name} - 系统调用删除失败: {path}\n{err}", file=sys.stderr)
-                return False, None
+                return bytearray()
             else:
-                return True, remaining_data
+                return remaining_data
         else:
-            return True, remaining_data
+            return remaining_data
 
             # 设置回调函数
 
-    def __on_rm_error(
-        self,
-        func: Callable[[str], None],
-        path: str,
-        exc_info: Tuple[Any, BaseException, Any],
-    ) -> None:
+    def __on_rm_error(self, func, path, exc_info) -> None:
         """
         删除文件夹时的错误处理函数
         """
@@ -118,7 +112,7 @@ class FileEater:
         except Exception as err:
             print(f"{os.name} - 删除失败: {path}\n{exc_info}\n{err}", file=sys.stderr)
 
-    def eat_folder(self, path: str) -> Tuple[bool, bytearray | None]:
+    def eat_folder(self, path: str) -> bytearray:
         """
         递归删除文件夹（支持长路径），将其转化为一些数据
         """
@@ -149,9 +143,9 @@ class FileEater:
             shutil.rmtree(path, onerror=self.__on_rm_error)
         except Exception as err:
             print(f"{os.name} - 删除失败: {path}\n{err}", file=sys.stderr)
-            return False, None
+            return bytearray()
         else:
-            return True, remaining_data
+            return remaining_data
 
 
 if __name__ == "__main__":
@@ -164,12 +158,12 @@ if __name__ == "__main__":
         file_eater = FileEater()
         for arg in sys.argv[1:]:
             if os.path.isfile(arg):
-                result, data = file_eater.eat_file(sys.argv[1])
+                data = file_eater.eat_file(sys.argv[1])
             else:
-                result, data = file_eater.eat_folder(sys.argv[1])
-            if result:
-                with open("log.txt", "ab") as f:
-                    f.write(data)
+                data = file_eater.eat_folder(sys.argv[1])
+            random.shuffle(data)
+            with open("log.txt", "ab") as f:
+                f.write(data)
     # 如果没有参数，显示使用说明
     else:
         print("请将文件或文件夹拖放到此脚本上", file=sys.stderr)
