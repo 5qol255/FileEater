@@ -8,13 +8,14 @@ import subprocess  # For executing system commands
 
 
 class FileEater:
-    def __init__(self):
-        pass
+    def __init__(self, n=32):
+        self.left_bytes_num = n
 
     def extract_data(self, text_or_path: str, num_bytes=32) -> bytearray:
         """
         随机获取字符串或文件的若干个字节
         """
+        num_bytes = num_bytes if num_bytes != 32 else self.left_bytes_num
         # 准备字节数组
         byte_list = bytearray()
         # 如果不是有效路径或者不是文件，则视为字符串
@@ -158,11 +159,11 @@ if __name__ == "__main__":
         file_eater = FileEater()
         for arg in sys.argv[1:]:
             if os.path.isfile(arg):
-                data = file_eater.eat_file(sys.argv[1])
+                data = file_eater.eat_file(arg)
             else:
-                data = file_eater.eat_folder(sys.argv[1])
+                data = file_eater.eat_folder(arg)
             random.shuffle(data)
-            with open("log.txt", "ab") as f:
+            with open("log.hex", "ab") as f:
                 f.write(data)
     # 如果没有参数，显示使用说明
     else:
