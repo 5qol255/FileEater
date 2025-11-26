@@ -3,6 +3,7 @@ from math import sqrt, ceil
 from random import choices
 import sys
 import os
+import ctypes
 
 DEBUG = False
 _print = print
@@ -130,7 +131,20 @@ class Undertaker:
         print(dirs_to_delete)
         # 删除文件和目录
         for file_ in files_to_delete:
-            os.remove(file_)
+            try:
+                os.remove(file_)
+            except PermissionError:
+                try:
+                    # 1. 清除只读属性（Windows 专用）
+                    ctypes.windll.kernel32.SetFileAttributesW(
+                        file_, 0x00000080
+                    )  # FILE_ATTRIBUTE_NORMAL
+                    os.remove(file_)
+                    print(f"✅ Forced deleted: {file_}")
+                except Exception as e:
+                    print(f"❌ Failed to force delete {file_}: {str(e)}")
+            except Exception as e:
+                print(f"❌ Failed to delete {file_}: {str(e)}")
         for directory in dirs_to_delete:
             os.rmdir(directory)
 
