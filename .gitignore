@@ -1,3 +1,6 @@
-build.bat
-FileEater.exe
-log.hex
+*.ps1
+*.exe
+*.png
+.vscode
+.venv
+__pycache__
