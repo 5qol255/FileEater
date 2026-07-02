@@ -1,6 +1,7 @@
 from PIL import Image
 from math import sqrt, ceil
 from random import choices
+from itertools import chain
 import sys
 import os
 import ctypes
@@ -40,45 +41,47 @@ class ImageTomb:
         self.current_pixel_num = (r << 24) + (g << 16) + (b << 8) + a
         print(self.current_pixel_num)
 
-    def fill_pixel(self, pixels: list[tuple[int, int, int, int]]):
-        # 需要填充的像素数量
-        fill_size = len(pixels)
-        # 判断是否需要扩充图片
-        if self.current_pixel_num + fill_size > self.max_pixel_num:
-            # 计算新图片边长
-            new_side_length = ceil(sqrt(self.current_pixel_num + fill_size))
-            # 创建新图片
-            new_image = Image.new(
-                "RGBA", (new_side_length, new_side_length), (0, 0, 0, 0)
-            )
-            # 复制旧图片数据到新图片
-            for x in range(self.side_length):
-                for y in range(self.side_length):
-                    itor = x + y * self.side_length
-                    xx = itor % new_side_length
-                    yy = itor // new_side_length
-                    pixel = self.image.getpixel((x, y))
-                    new_image.putpixel((xx, yy), pixel)
-                    print(x, y, xx, yy)
-            # 更新相关参数
-            self.image = new_image
-            self.side_length = new_side_length
-            self.max_pixel_num = new_side_length**2
-
-        for i in range(fill_size):
-            x = (i + self.current_pixel_num) % self.side_length
-            y = (i + self.current_pixel_num) // self.side_length
-            self.image.putpixel((x, y), pixels[i])
-            print(x, y)
-        self.current_pixel_num += fill_size
-        self.image.putpixel(
-            (0, 0),
+    @staticmethod
+    def __pixel_num_to_bytes(pixel_num: int) -> bytes:
+        return bytes(
             (
-                self.current_pixel_num >> 24 & 0xFF,
-                self.current_pixel_num >> 16 & 0xFF,
-                self.current_pixel_num >> 8 & 0xFF,
-                self.current_pixel_num >> 0 & 0xFF,
-            ),
+                pixel_num >> 24 & 0xFF,
+                pixel_num >> 16 & 0xFF,
+                pixel_num >> 8 & 0xFF,
+                pixel_num & 0xFF,
+            )
+        )
+
+    @staticmethod
+    def __pixels_to_bytes(pixels: list[tuple[int, int, int, int]]) -> bytes:
+        pixel_bytes = bytes(chain.from_iterable(pixels))
+        expected_size = len(pixels) * 4
+        if len(pixel_bytes) != expected_size:
+            raise ValueError("All pixels must be RGBA tuples with 4 bytes.")
+        return pixel_bytes
+
+    def fill_pixel(self, pixels: list[tuple[int, int, int, int]]):
+        fill_size = len(pixels)
+        if fill_size == 0:
+            return
+
+        required_pixel_num = self.current_pixel_num + fill_size
+        image_bytes = bytearray(self.image.tobytes())
+
+        if required_pixel_num > self.max_pixel_num:
+            new_side_length = ceil(sqrt(required_pixel_num))
+            new_max_pixel_num = new_side_length**2
+            image_bytes.extend(b"\x00" * ((new_max_pixel_num - self.max_pixel_num) * 4))
+            self.side_length = new_side_length
+            self.max_pixel_num = new_max_pixel_num
+
+        start = self.current_pixel_num * 4
+        end = start + fill_size * 4
+        image_bytes[start:end] = self.__pixels_to_bytes(pixels)
+        self.current_pixel_num = required_pixel_num
+        image_bytes[:4] = self.__pixel_num_to_bytes(self.current_pixel_num)
+        self.image = Image.frombytes(
+            "RGBA", (self.side_length, self.side_length), bytes(image_bytes)
         )
         self.save()
 
@@ -86,12 +89,18 @@ class ImageTomb:
         self.image.save(self.filename)
 
     def __str__(self):
-        dest = ""
-        for i in range(self.side_length):
-            for j in range(self.side_length):
-                dest += str(self.image.getpixel((j, i)))
-            dest += "\n"
-        return dest
+        image_bytes = self.image.tobytes()
+        rows = []
+        for y in range(self.side_length):
+            row_start = y * self.side_length * 4
+            row_end = row_start + self.side_length * 4
+            rows.append(
+                "".join(
+                    str(tuple(image_bytes[i : i + 4]))
+                    for i in range(row_start, row_end, 4)
+                )
+            )
+        return "\n".join(rows) + "\n"
 
 
 class Undertaker:
@@ -115,6 +124,20 @@ class Undertaker:
             raise FileNotFoundError(f"{filepath} dose not exist.")
         if not os.path.isdir(filepath):
             self.eat_from_file(filepath)
+            try:
+                os.remove(filepath)
+            except PermissionError:
+                try:
+                    # 1. 清除只读属性（Windows 专用）
+                    ctypes.windll.kernel32.SetFileAttributesW(
+                        filepath, 0x00000080
+                    )  # FILE_ATTRIBUTE_NORMAL
+                    os.remove(filepath)
+                    print(f"✅ Forced deleted: {filepath}")
+                except Exception as e:
+                    print(f"❌ Failed to force delete {filepath}: {str(e)}")
+            except Exception as e:
+                print(f"❌ Failed to delete {filepath}: {str(e)}")
             return
 
         files_to_delete = []
@@ -140,11 +163,11 @@ class Undertaker:
                         file_, 0x00000080
                     )  # FILE_ATTRIBUTE_NORMAL
                     os.remove(file_)
-                    print(f"✅ Forced deleted: {file_}")
+                    print(f"Forced deleted: {file_}")
                 except Exception as e:
-                    print(f"❌ Failed to force delete {file_}: {str(e)}")
+                    print(f"Failed to force delete {file_}: {str(e)}")
             except Exception as e:
-                print(f"❌ Failed to delete {file_}: {str(e)}")
+                print(f"Failed to delete {file_}: {str(e)}")
         for directory in dirs_to_delete:
             os.rmdir(directory)
 
